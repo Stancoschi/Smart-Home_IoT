@@ -5,22 +5,25 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <PubSubClient.h>
+#include <LDRSensor.h>
+#include <WiFiManager.h>
+#include <Servo.h>
 
-/************************* Pin Definition *********************************/
-
-// DHT11 for reading temperature and humidity value
-
-#define DHTPIN D3
+// DHT11 for reading tempe rature and humidity value
+#define fan D1
+#define fan1 D2
+#define DHTPIN D3     // pin D3-Dht11 conectat
 #define DHTTYPE DHT11 // DHT 11
-#define LED_Verde D8
+#define LED_Verde D8  // pin D8-Releu Conectat
+#define Ventilator D7 // pin D7-
+Servo servo;  //Pin D1  - Servo motor
 DHT dht(DHTPIN, DHTTYPE);
-String temp;
-String hum;
-
-// Your WiFi credentials.
-const char *ssid = "HUAWEI-2rPn";
-const char *password = "B9dfmugT";
-const char *mqtt_server = "192.168.100.4"; // this is our broker
+LDRSensor ldrSensor(A0);
+int DHT11_Temperature_inCelsius = 0;
+int DHT11_Humidity_inProcent = 0;
+const char *ssid = "HUAWEI-2rPn";          // WiFi ssid ,password and MQTT server ip_adress.   HUAWEI-2rPn
+const char *password = "B9dfmugT";         // B9dfmugT
+const char *mqtt_server = "192.168.100.4"; // localhost
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -28,20 +31,66 @@ PubSubClient client(espClient);
 unsigned long lastMsg = 0;
 #define MSG_BUFFER_SIZE (50)
 char msg[MSG_BUFFER_SIZE];
-int value = 0;
-int sensorValue = 0;
+
+
+
+void checkTemperatureAndHumidity() {
+  if (DHT11_Temperature_inCelsius > 25) {
+    digitalWrite(Ventilator, HIGH); // Turn on the ventilator
+  } else {
+    digitalWrite(Ventilator, LOW); // Turn off the ventilator
+  }
+  
+  if (DHT11_Humidity_inProcent > 60) {
+    digitalWrite(Ventilator, HIGH); // Turn on the ventilator
+  } else {
+    digitalWrite(Ventilator, LOW); // Turn off the ventilator
+  }
+}
+
+
+void checkLightLevel() {
+  float voltage = ldrSensor.readVoltage();
+  if (voltage < 2.0) { // Assuming voltage < 2.0V indicates darkness
+    digitalWrite(LED_Verde, HIGH); // Turn on the LED
+    servo.write(180);
+  } else {
+    digitalWrite(LED_Verde, LOW); // Turn off the LED
+    servo.write(0);
+  }
+}
+
+void sendAlert(const char* message) {
+  client.publish("esp8266/alert", message);
+}
+
+void checkAndSendAlerts() {
+  if (DHT11_Temperature_inCelsius > 30) {
+    sendAlert("Temperature is too high!");
+  } else if (DHT11_Temperature_inCelsius < 10) {
+    sendAlert("Temperature is too low!");
+  }
+  else{
+    digitalWrite(fan, HIGH);
+    sendAlert("Temperature is normal!");
+  }
+
+  if (DHT11_Humidity_inProcent > 70) {
+    sendAlert("Humidity is too high!");
+  }
+}
+
 
 void setup_wifi()
-{ // setting up wifi connection
-
+{
   delay(10);
-  // We start by connecting to a WiFi network
+  // We state to wich WiFi network we want to access.
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
-  WiFi.mode(WIFI_STA);        // select "wifi station" mode (client mode)
-  WiFi.begin(ssid, password); // initiate connection
+  WiFi.mode(WIFI_STA);        //"WiFi station"(client mode)
+  WiFi.begin(ssid, password); // connecting by provided ssid and password
 
   while (WiFi.status() != WL_CONNECTED)
   { // wait for connection (retry)
@@ -54,9 +103,7 @@ void setup_wifi()
   Serial.println(WiFi.localIP());
 }
 
-// This functions is executed when some device publishes a message to a topic that your ESP8266 is subscribed to
-// Change the function below to add logic to your program, so when a device publishes a message to a topic that
-// your ESP8266 is subscribed you can actually do something
+// This functions is executed when a device publishes a message to a topic that the ESP8266 is subscribed to
 void callback(char *topic, byte *payload, unsigned int length)
 { // callback funtion (trigger)
 
@@ -69,31 +116,30 @@ void callback(char *topic, byte *payload, unsigned int length)
   { // print received character array in one line
     Serial.print((char)payload[i]);
     messageTemp += (char)payload[i];
-    if (strcmp(topic ,"esp8266/LED")==0)
+    if (strcmp(topic, "esp8266/light") == 0)
     {
       Serial.print("Switching LED  ");
-      if (messageTemp == "on")
+      if (messageTemp == "ON")
       {
 
-        Serial.print("on");
+        Serial.print("ON");
         digitalWrite(LED_Verde, HIGH);
+
         Serial.print(LED_Verde);
       }
-      else if (messageTemp == "off")
+      else if (messageTemp == "OFF")
       {
 
         Serial.print("off");
+
         digitalWrite(LED_Verde, LOW);
       }
       else
       {
-        // Do nothing
+        // Do nothing for the moment
       }
     }
   }
-  Serial.println();
-
-  // Switch on the LED if an 1 was received as first character
 }
 
 void reconnect()
@@ -109,8 +155,8 @@ void reconnect()
     if (client.connect(clientId.c_str()))
     {
       Serial.println("connected");
-      // Once connected, publish an announcement...
-      client.subscribe("esp8266/LED");
+      // Once connected, subscribe to the wanted publishers.
+      client.subscribe("esp8266/light");
     }
     else
     {
@@ -118,23 +164,26 @@ void reconnect()
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
-      delay(5000);
+      delay(200);
     }
   }
 }
 
 void setup()
 {
-
-  // Debug console
-  pinMode(LED_Verde, OUTPUT);
-  digitalWrite(LED_Verde, 1);
   Serial.begin(115200);
   dht.begin();
   setup_wifi();                        // call function
   client.setServer(mqtt_server, 1883); // connect to MQTT
   client.setCallback(callback);        // Listen to incoming messages and trigger callback
+  pinMode(LED_Verde, OUTPUT);
+  pinMode(fan, OUTPUT);
+  pinMode(fan1, OUTPUT);
+  servo.attach(D0);
+  servo.write(0);
 }
+
+
 
 void loop()
 
@@ -144,10 +193,27 @@ void loop()
     reconnect();
   }
   client.loop(); // MQTT loop, we keep listening
-  value = dht.readTemperature();
+
+  DHT11_Temperature_inCelsius = dht.readTemperature();
+  DHT11_Humidity_inProcent = dht.readHumidity();
 
   char str[8];
-  itoa(value, str, 10); // convert int to char array
+  itoa(DHT11_Temperature_inCelsius, str, 10); // convert int to char array
   client.publish("esp8266/temp", str);
-  delay(0.5); // loop 2second by 2second, you can change it, but don't flood our free broker
+
+  itoa(DHT11_Humidity_inProcent, str, 10); // convert int to char array
+  client.publish("esp8266/DHT11_Humidity", str);
+
+  float voltage = ldrSensor.readVoltage();
+  Serial.println(voltage);
+
+  itoa(voltage, str, 10);
+  client.publish("esp8266/LDR_value", str);
+  checkLightLevel();
+  checkAndSendAlerts();
+  digitalWrite(fan1, HIGH);
+  delay(500); // loop 0.5second by 0.5second, mai mult flodam brokerul mqtt
+digitalWrite(fan1, LOW);
 }
+
+
