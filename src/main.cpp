@@ -12,6 +12,7 @@
 
 #define DHTPIN D3
 #define DHTTYPE DHT11 // DHT 11
+#define LED_Verde D8
 DHT dht(DHTPIN, DHTTYPE);
 String temp;
 String hum;
@@ -47,23 +48,48 @@ void setup_wifi()
     delay(500);
     Serial.print(".");
   }
-
-  randomSeed(micros());
-
   Serial.println(""); // when connected
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
+// This functions is executed when some device publishes a message to a topic that your ESP8266 is subscribed to
+// Change the function below to add logic to your program, so when a device publishes a message to a topic that
+// your ESP8266 is subscribed you can actually do something
 void callback(char *topic, byte *payload, unsigned int length)
 { // callback funtion (trigger)
+
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
+  String messageTemp;
+
   for (int i = 0; i < length; i++)
   { // print received character array in one line
     Serial.print((char)payload[i]);
+    messageTemp += (char)payload[i];
+    if (strcmp(topic ,"esp8266/LED")==0)
+    {
+      Serial.print("Switching LED  ");
+      if (messageTemp == "on")
+      {
+
+        Serial.print("on");
+        digitalWrite(LED_Verde, HIGH);
+        Serial.print(LED_Verde);
+      }
+      else if (messageTemp == "off")
+      {
+
+        Serial.print("off");
+        digitalWrite(LED_Verde, LOW);
+      }
+      else
+      {
+        // Do nothing
+      }
+    }
   }
   Serial.println();
 
@@ -84,9 +110,7 @@ void reconnect()
     {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("LDR", "Hello I'm connected"); // run only once, just after mqtt connect
-      // ... and resubscribe
-      client.subscribe("LED");
+      client.subscribe("esp8266/LED");
     }
     else
     {
@@ -103,7 +127,8 @@ void setup()
 {
 
   // Debug console
-
+  pinMode(LED_Verde, OUTPUT);
+  digitalWrite(LED_Verde, 1);
   Serial.begin(115200);
   dht.begin();
   setup_wifi();                        // call function
@@ -120,10 +145,9 @@ void loop()
   }
   client.loop(); // MQTT loop, we keep listening
   value = dht.readTemperature();
-  Serial.print(value);
-  Serial.print("Temp is: ");
+
   char str[8];
   itoa(value, str, 10); // convert int to char array
   client.publish("esp8266/temp", str);
-  delay(2000); // loop 2second by 2second, you can change it, but don't flood our free broker
+  delay(0.5); // loop 2second by 2second, you can change it, but don't flood our free broker
 }
