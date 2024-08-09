@@ -1,0 +1,44 @@
+/* src/App.css */
+.App {
+  font-family: Arial, sans-serif;
+  background-color: #0e131f;
+  padding: 20px;
+  color: #eae2b7;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #0e131f;
+  color: #eae2b7;
+  padding: 10px 20px;
+  border-radius: 10px;
+}
+
+.dashboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 20px;
+  margin-top: 20px;
+
+  @media (max-width: 1200px) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.weather,
+.energy-saving,
+.device-control,
+.temperature-control {
+  background-color: #0e131f;
+  padding: 20px;
+  border-radius: 10px;
+
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
